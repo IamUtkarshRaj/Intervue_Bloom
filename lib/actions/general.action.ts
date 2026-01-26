@@ -10,6 +10,10 @@ export async function createFeedback(params: CreateFeedbackParams) {
   const { interviewId, userId, transcript, feedbackId } = params;
 
   try {
+    if (!transcript || transcript.length === 0) {
+      return { success: false };
+    }
+    
     const formattedTranscript = transcript
       .map(
         (sentence: { role: string; content: string }) =>
@@ -18,7 +22,7 @@ export async function createFeedback(params: CreateFeedbackParams) {
       .join("");
 
     const { object } = await generateObject({
-      model: google("gemini-2.0-flash-001"),
+      model: google("gemini-3-flash-preview"),
       schema: feedbackSchema,
       prompt: `
         You are an AI interviewer analyzing a mock interview. Your task is to evaluate the candidate based on structured categories. Be thorough and detailed in your analysis. Don't be lenient with the candidate. If there are mistakes or areas for improvement, point them out.
@@ -58,16 +62,23 @@ export async function createFeedback(params: CreateFeedbackParams) {
     await feedbackRef.set(feedback);
 
     return { success: true, feedbackId: feedbackRef.id };
-  } catch (error) {
-    console.error("Error saving feedback:", error);
+  } catch (error: any) {
     return { success: false };
   }
 }
 
 export async function getInterviewById(id: string): Promise<Interview | null> {
-  const interview = await db.collection("interviews").doc(id).get();
+  try {
+    const interview = await db.collection("interviews").doc(id).get();
 
-  return interview.data() as Interview | null;
+    if (!interview.exists) {
+      return null;
+    }
+
+    return { id: interview.id, ...interview.data() } as Interview;
+  } catch (error) {
+    return null;
+  }
 }
 
 export async function getFeedbackByInterviewId(
@@ -90,40 +101,55 @@ export async function getFeedbackByInterviewId(
 
 export async function getLatestInterviews(
   params: GetLatestInterviewsParams
-): Promise<Interview[] | null> {
+): Promise<Interview[]> {
   const { userId, limit = 20 } = params;
 
-  const interviews = await db
-    .collection("interviews")
-    .orderBy("createdAt", "desc")
-    .where("finalized", "==", true)
-    .where("userId", "!=", userId)
-    .limit(limit)
-    .get();
+  try {
+    // Simplified query to avoid index requirement
+    const interviews = await db
+      .collection("interviews")
+      .where("finalized", "==", true)
+      .limit(limit)
+      .get();
 
-  return interviews.docs.map((doc) => ({
-    id: doc.id,
-    ...doc.data(),
-  })) as Interview[];
+    if (interviews.empty) {
+      return [];
+    }
+
+    return interviews.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    })) as Interview[];
+  } catch (error) {
+    return [];
+  }
 }
 
 export async function getInterviewsByUserId(
   userId: string
-): Promise<Interview[] | null> {
-  const interviews = await db
-    .collection("interviews")
-    .where("userId", "==", userId)
-    .get();
+): Promise<Interview[]> {
+  try {
+    const interviews = await db
+      .collection("interviews")
+      .where("userId", "==", userId)
+      .get();
 
-  const data = interviews.docs.map((doc) => ({
-    id: doc.id,
-    ...doc.data(),
-  })) as Interview[];
+    if (interviews.empty) {
+      return [];
+    }
 
-  // Sort by createdAt in descending order (newest first)
-  return data.sort((a, b) => {
-    const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-    const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-    return timeB - timeA;
-  });
+    const data = interviews.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    })) as Interview[];
+
+    // Sort by createdAt in descending order (newest first)
+    return data.sort((a, b) => {
+      const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return timeB - timeA;
+    });
+  } catch (error) {
+    return [];
+  }
 }

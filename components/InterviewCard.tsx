@@ -5,7 +5,7 @@ import Image from "next/image";
 import { Button } from "./ui/button";
 import DisplayTechIcons from "./DisplayTechIcons";
 
-import { cn, getRandomInterviewCover } from "@/lib/utils";
+import { cn, getRandomInterviewCover, getTechLogos } from "@/lib/utils";
 import { getFeedbackByInterviewId } from "@/lib/actions/general.action";
 
 const InterviewCard = async ({
@@ -15,14 +15,17 @@ const InterviewCard = async ({
   type,
   techstack,
   createdAt,
+  cover,
 }: InterviewCardProps) => {
-  const feedback =
+  const [feedback, techIcons] = await Promise.all([
     userId && interviewId
-      ? await getFeedbackByInterviewId({
+      ? getFeedbackByInterviewId({
           interviewId,
           userId,
         })
-      : null;
+      : null,
+    getTechLogos(techstack),
+  ]);
 
   const normalizedType = /mix/gi.test(type) ? "Mixed" : type;
 
@@ -34,7 +37,7 @@ const InterviewCard = async ({
     }[normalizedType] || "bg-light-600";
 
   const formattedDate = dayjs(
-    feedback?.createdAt || createdAt || Date.now()
+    feedback?.createdAt || createdAt
   ).format("MMM D, YYYY");
 
   return (
@@ -53,7 +56,7 @@ const InterviewCard = async ({
 
           {/* Cover Image */}
           <Image
-            src={getRandomInterviewCover()}
+            src={cover || getRandomInterviewCover()}
             alt="cover-image"
             width={90}
             height={90}
@@ -89,7 +92,7 @@ const InterviewCard = async ({
         </div>
 
         <div className="flex flex-row justify-between">
-          <DisplayTechIcons techStack={techstack} />
+          <DisplayTechIcons techIcons={techIcons} />
 
           <Button className="btn-primary">
             <Link

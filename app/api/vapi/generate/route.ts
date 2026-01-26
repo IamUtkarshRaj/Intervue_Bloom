@@ -96,16 +96,6 @@ export async function POST(request: Request) {
 
     questions = JSON.parse(aiQuestions);
   } catch (error: any) {
-    console.warn(
-      "AI generation failed, using fallback questions:",
-      error?.message
-    );
-
-    // Check if it's a quota error
-    if (error?.statusCode === 429 || error?.message?.includes("quota")) {
-      console.log("📊 Quota exceeded - using intelligent fallback questions");
-    }
-
     // Use fallback questions
     questions = generateFallbackQuestions(role, level, techstack, type, amount);
     usedFallback = true;
@@ -138,7 +128,6 @@ export async function POST(request: Request) {
       { status: 200 }
     );
   } catch (error) {
-    console.error("Database error:", error);
     return Response.json(
       {
         success: false,

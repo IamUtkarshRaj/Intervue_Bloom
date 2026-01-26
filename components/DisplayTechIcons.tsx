@@ -1,9 +1,16 @@
 import Image from "next/image";
 
-import { cn, getTechLogos } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 
-const DisplayTechIcons = async ({ techStack }: TechIconProps) => {
-  const techIcons = await getTechLogos(techStack);
+interface DisplayTechIconsProps {
+  techIcons: Array<{ tech: string; url: string }>;
+}
+
+const DisplayTechIcons = ({ techIcons }: DisplayTechIconsProps) => {
+  // Handle undefined or empty techIcons
+  if (!techIcons || techIcons.length === 0) {
+    return null;
+  }
 
   return (
     <div className="flex flex-row">

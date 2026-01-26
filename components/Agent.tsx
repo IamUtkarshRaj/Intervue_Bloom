@@ -3,11 +3,13 @@
 import Image from "next/image";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 
 import { cn } from "@/lib/utils";
 import { vapi } from "@/lib/vapi.sdk";
 import { interviewer } from "@/constants";
 import { createFeedback } from "@/lib/actions/general.action";
+import { config } from "@/lib/config";
 
 enum CallStatus {
   INACTIVE = "INACTIVE",
@@ -34,6 +36,7 @@ const Agent = ({
   const [messages, setMessages] = useState<SavedMessage[]>([]);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [lastMessage, setLastMessage] = useState<string>("");
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const onCallStart = () => {
@@ -52,17 +55,15 @@ const Agent = ({
     };
 
     const onSpeechStart = () => {
-      console.log("speech start");
       setIsSpeaking(true);
     };
 
     const onSpeechEnd = () => {
-      console.log("speech end");
       setIsSpeaking(false);
     };
 
-    const onError = (error: Error) => {
-      console.log("Error:", error);
+    const onError = (error: any) => {
+      // Silently handle errors - could add error logging service here
     };
 
     vapi.on("call-start", onCallStart);
@@ -88,20 +89,47 @@ const Agent = ({
     }
 
     const handleGenerateFeedback = async (messages: SavedMessage[]) => {
-      console.log("handleGenerateFeedback");
+      try {
+        // Validate required data
+        if (!interviewId || !userId) {
+          const errorMsg = "Missing interview or user information";
+          setError(errorMsg);
+          toast.error("Unable to save feedback: Missing required information");
+          setTimeout(() => router.push("/"), 2000);
+          return;
+        }
 
-      const { success, feedbackId: id } = await createFeedback({
-        interviewId: interviewId!,
-        userId: userId!,
-        transcript: messages,
-        feedbackId,
-      });
+        if (!messages || messages.length === 0) {
+          const errorMsg = "No interview transcript available";
+          setError(errorMsg);
+          toast.error("Unable to generate feedback: No conversation recorded");
+          setTimeout(() => router.push("/"), 2000);
+          return;
+        }
 
-      if (success && id) {
-        router.push(`/interview/${interviewId}/feedback`);
-      } else {
-        console.log("Error saving feedback");
-        router.push("/");
+        toast.loading("Generating feedback...", { id: "feedback-generation" });
+
+        const { success, feedbackId: id } = await createFeedback({
+          interviewId: interviewId,
+          userId: userId,
+          transcript: messages,
+          feedbackId,
+        });
+
+        if (success && id) {
+          toast.success("Feedback generated successfully!", { id: "feedback-generation" });
+          router.push(`/interview/${interviewId}/feedback`);
+        } else {
+          const errorMsg = "Failed to save feedback";
+          setError(errorMsg);
+          toast.error("Error saving feedback. Redirecting to home...", { id: "feedback-generation" });
+          setTimeout(() => router.push("/"), 2000);
+        }
+      } catch (err: any) {
+        const errorMsg = err?.message || "Unknown error occurred";
+        setError(errorMsg);
+        toast.error("An unexpected error occurred while generating feedback", { id: "feedback-generation" });
+        setTimeout(() => router.push("/"), 2000);
       }
     };
 
@@ -117,26 +145,38 @@ const Agent = ({
   const handleCall = async () => {
     setCallStatus(CallStatus.CONNECTING);
 
-    if (type === "generate") {
-      await vapi.start(process.env.NEXT_PUBLIC_VAPI_WORKFLOW_ID!, {
-        variableValues: {
-          username: userName,
-          userid: userId,
-        },
-      });
-    } else {
-      let formattedQuestions = "";
-      if (questions) {
-        formattedQuestions = questions
-          .map((question) => `- ${question}`)
-          .join("\n");
-      }
+    try {
+      if (type === "generate") {
+        const workflowId = config.vapi.workflowId;
+        
+        await vapi.start(
+          undefined,
+          undefined,
+          undefined,
+          workflowId,
+          {
+            variableValues: {
+              username: userName,
+              userid: userId,
+            },
+          }
+        );
+      } else {
+        let formattedQuestions = "";
+        if (questions) {
+          formattedQuestions = questions
+            .map((question) => `- ${question}`)
+            .join("\n");
+        }
 
-      await vapi.start(interviewer, {
-        variableValues: {
-          questions: formattedQuestions,
-        },
-      });
+        await vapi.start(interviewer, {
+          variableValues: {
+            questions: formattedQuestions,
+          },
+        });
+      }
+    } catch (error: any) {
+      setCallStatus(CallStatus.INACTIVE);
     }
   };
 
